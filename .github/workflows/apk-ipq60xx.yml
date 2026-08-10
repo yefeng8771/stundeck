@@ -1,0 +1,103 @@
+name: Build apk (IPQ60XX)
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      SDK_BASE: https://downloads.immortalwrt.org/snapshots/targets/qualcommax/ipq60xx
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Build dashboard
+        run: |
+          pnpm --dir web install --frozen-lockfile
+          pnpm --dir web run build
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          cache: true
+
+      - name: Cross-compile aarch64
+        env:
+          GOOS: linux
+          GOARCH: arm64
+          CGO_ENABLED: '0'
+        run: |
+          set -eu
+          VER="0.1.$(date -u +%Y%m%d%H%M)"
+          echo "STUNDECK_VERSION=$VER" >> "$GITHUB_ENV"
+          M=github.com/Nciae-Zyh/stundeck/internal/version
+          mkdir -p prebuilt
+          go build -trimpath \
+            -ldflags "-s -w -X $M.Version=$VER -X $M.Commit=${GITHUB_SHA::7}" \
+            -o prebuilt/stundeck ./cmd/stundeck
+          go build -trimpath -ldflags "-s -w" \
+            -o prebuilt/stundeck-notify ./cmd/stundeck-notify
+          file prebuilt/stundeck
+
+      - name: Host deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential libncurses-dev \
+            zlib1g-dev gawk gettext libssl-dev xsltproc rsync unzip \
+            python3 zstd file
+
+      - name: Fetch SDK
+        run: |
+          set -eu
+          NAME=$(curl -fsSL "$SDK_BASE/sha256sums" \
+            | grep -oE '[a-z]+-sdk-[^ ]+\.tar\.zst' | head -n1)
+          echo "SDK: $NAME"
+          curl -fsSL -o sdk.tar.zst "$SDK_BASE/$NAME"
+          mkdir sdk
+          tar --zstd -xf sdk.tar.zst -C sdk --strip-components=1
+          rm sdk.tar.zst
+
+      - name: Stage package
+        run: |
+          cp -r openwrt/stundeck sdk/package/stundeck
+          mkdir -p sdk/prebuilt
+          cp prebuilt/stundeck prebuilt/stundeck-notify sdk/prebuilt/
+
+      - name: Build apk
+        working-directory: sdk
+        run: |
+          set -eu
+          ./scripts/feeds update -a
+          ./scripts/feeds install natmap
+          export STUNDECK_BIN_DIR="$PWD/prebuilt"
+          echo 'CONFIG_PACKAGE_stundeck=y' >> .config
+          make defconfig
+          make package/stundeck/compile V=s -j$(nproc)
+
+      - name: Collect
+        run: |
+          mkdir -p dist
+          find sdk/bin -name 'stundeck*.apk' -exec cp {} dist/ \;
+          ls -lh dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stundeck-ipq60xx-apk
+          path: dist/*.apk
+          if-no-files-found: error
