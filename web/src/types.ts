@@ -43,7 +43,7 @@ export interface Service {
   targetPort: number
   protocol: 'tcp' | 'udp'
   bindPort: number
-  gatewayMode: 'none' | 'upnp' | 'natpmp'
+  gatewayMode: 'none' | 'upnp' | 'natpmp' | 'fw4'
   gatewayAddress: string
   scheme: 'http' | 'https'
   publishMode: 'direct' | 'redirect'

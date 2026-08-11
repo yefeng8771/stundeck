@@ -79,7 +79,7 @@ async function submit() {
       <label>目标端口<input v-model.number="form.targetPort" type="number" min="1" max="65535" required /></label>
       <label>协议<select v-model="form.protocol"><option value="tcp">TCP</option><option value="udp">UDP</option></select></label>
       <label>监听端口<input v-model.number="form.bindPort" type="number" min="0" max="65535" /><small>0 表示自动分配</small></label>
-      <label>路由器端口放行<select v-model="form.gatewayMode"><option value="none">不自动管理</option><option value="upnp">UPnP（推荐）</option><option value="natpmp">NAT-PMP</option></select><small>局域网运行时，用于补齐公网端口到穿透监听端口的映射</small></label>
+      <label>路由器端口放行<select v-model="form.gatewayMode"><option value="none">不自动管理</option><option value="upnp">UPnP（推荐）</option><option value="natpmp">NAT-PMP</option><option value="fw4">防火墙放行（本机为 OpenWrt 路由器）</option></select><small>局域网运行时用 UPnP / NAT-PMP 向上游路由器申请映射；本程序直接跑在 OpenWrt 路由器上时选“防火墙放行”，改为在本机 fw4 放行穿透端口</small></label>
       <label v-if="form.gatewayMode !== 'none'">网关 IP（可选）<input v-model.trim="form.gatewayAddress" inputmode="numeric" placeholder="自动发现，例如 192.168.1.1" /><small>留空自动发现；多路由环境建议明确填写</small></label>
       <label>发布方式<select v-model="form.publishMode"><option value="direct">仅公网映射</option><option value="redirect">Cloudflare Redirect</option></select></label>
       <template v-if="redirectMode">
