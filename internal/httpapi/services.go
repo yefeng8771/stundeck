@@ -324,8 +324,8 @@ func (s *Server) serviceFromRequest(ctx context.Context, input serviceRequest) (
 	if service.GatewayMode == "" {
 		service.GatewayMode = "none"
 	}
-	if service.GatewayMode != "none" && service.GatewayMode != "upnp" && service.GatewayMode != "natpmp" {
-		return store.Service{}, errors.New("gateway mode must be none, upnp or natpmp")
+	if service.GatewayMode != "none" && service.GatewayMode != "upnp" && service.GatewayMode != "natpmp" && service.GatewayMode != "fw4" {
+		return store.Service{}, errors.New("gateway mode must be none, upnp, natpmp or fw4")
 	}
 	if service.GatewayAddress != "" && net.ParseIP(service.GatewayAddress) == nil {
 		return store.Service{}, errors.New("gateway address must be an IP address")

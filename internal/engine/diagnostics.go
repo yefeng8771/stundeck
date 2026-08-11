@@ -201,6 +201,15 @@ func (m *Manager) checkGatewayDiscovery(ctx context.Context, service store.Servi
 		}
 		return "pass", "已发现 UPnP IGD 网关 " + location.Hostname()
 	}
+	if mode == "fw4" {
+		if err := firewallAvailable(); err != nil {
+			return "fail", err.Error()
+		}
+		if err := firewallChainPresent(ctx); err != nil {
+			return "fail", "读取 fw4 " + firewallInputChain + " 链失败：" + firstFirewallLine(err.Error())
+		}
+		return "pass", "本机 firewall4 可用，将在 " + firewallInputChain + " 链放行穿透监听端口"
+	}
 	gateway := net.ParseIP(service.GatewayAddress)
 	var err error
 	if gateway == nil {

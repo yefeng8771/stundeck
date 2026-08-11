@@ -98,6 +98,7 @@ function diagnosticTitle(report: DiagnosticReport) {
 function gatewayModeLabel(mode: Service['gatewayMode']) {
   if (mode === 'upnp') return 'UPnP'
   if (mode === 'natpmp') return 'NAT-PMP'
+  if (mode === 'fw4') return '防火墙放行'
   return '未启用'
 }
 </script>

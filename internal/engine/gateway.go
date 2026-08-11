@@ -26,6 +26,7 @@ const (
 
 type GatewayMapping struct {
 	Mode         string
+	ServiceID    string
 	Gateway      string
 	ControlURL   string
 	ServiceType  string
@@ -89,6 +90,12 @@ func (m *Manager) ApplyGatewayMapping(ctx context.Context, service store.Service
 		if err := setNATPMPMapping(ctx, state, natPMPLeaseSeconds); err != nil {
 			return fmt.Errorf("add NAT-PMP mapping: %w", err)
 		}
+	case "fw4":
+		// StunDeck runs on the router itself: open the port on the local
+		// firewall instead of asking an upstream gateway for a mapping.
+		if err := applyFirewallMapping(ctx, state); err != nil {
+			return fmt.Errorf("add fw4 rule: %w", err)
+		}
 	default:
 		return fmt.Errorf("unsupported gateway mode %q", service.GatewayMode)
 	}
@@ -114,12 +121,16 @@ func (m *Manager) ApplyGatewayMapping(ctx context.Context, service store.Service
 	if state.Mode == "natpmp" {
 		go m.renewNATPMP(processContext, service.ID, state, generation)
 	}
+	if state.Mode == "fw4" {
+		go m.reassertFirewall(processContext, service.ID, state, generation)
+	}
 	return nil
 }
 
 func gatewayMappingState(service store.Service, mapping Mapping, internalIP string) GatewayMapping {
 	return GatewayMapping{
 		Mode:         service.GatewayMode,
+		ServiceID:    service.ID,
 		Gateway:      service.GatewayAddress,
 		InternalIP:   internalIP,
 		InternalPort: mapping.PrivatePort,
@@ -181,6 +192,8 @@ func removeGatewayMapping(ctx context.Context, mapping GatewayMapping) error {
 		return deleteUPnPMapping(ctx, mapping)
 	case "natpmp":
 		return setNATPMPMapping(ctx, mapping, 0)
+	case "fw4":
+		return removeFirewallMapping(ctx, mapping)
 	default:
 		return nil
 	}
@@ -545,6 +558,9 @@ func shortServiceID(serviceID string) string {
 func gatewayModeLabel(mode string) string {
 	if mode == "upnp" {
 		return "UPnP"
+	}
+	if mode == "fw4" {
+		return "防火墙放行"
 	}
 	if mode == "natpmp" {
 		return "NAT-PMP"
