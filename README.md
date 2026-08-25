@@ -8,7 +8,8 @@ StunDeck 是一个本地优先、开源的 STUN 映射控制面板。它负责�
 
 - 单节点 TCP/UDP NATMap 监管。
 - 局域网目标可达性预检。
-- 一键 STUN 诊断：代理环境、TCP/UDP Binding、保活出口、目标协议、网关能力与映射进程。
+- 首页网络诊断：按 RFC 5780 展示 NAT 映射类型，并分别检查 TCP/UDP STUN 支持。
+- 服务级 STUN 诊断：代理环境、TCP/UDP Binding、保活出口、目标协议、网关能力与映射进程。
 - 可选的 UPnP / NAT-PMP 网关端口映射，适配 StunDeck 运行在普通局域网主机的场景。
 - Cloudflare API Token 验证与 Zone 选择。
 - Cloudflare DNS 与 Single Redirect 单规则同步。
@@ -37,6 +38,8 @@ docker compose up -d --build
 ```
 
 打开 `http://服务器局域网IP:8080`，自行创建管理员用户名和密码，并选择控制面访问模式。首次初始化只接受本机或局域网请求；完成后可以在“控制面安全”中开启 TOTP 2FA、设置允许访问域名/IP，再添加 Cloudflare API Token。
+
+控制台推荐顺序是：先查看首页 NAT/STUN 检测，再配置 Cloudflare，最后创建映射服务。Cloudflare 页可直接打开官方 Token 管理页面，并给出可复制的最小权限清单。
 
 正式暴露管理页面前，请通过反向代理或 Cloudflare Tunnel 提供 HTTPS，并设置：
 
@@ -74,9 +77,10 @@ make fpk
 
 不要使用 Global API Key。推荐创建仅限目标 Zone 的 API Token：
 
-- Zone Read
-- DNS Write，仅在让 StunDeck 管理 DNS 时需要
-- Dynamic URL Redirects Write
+- Zone > Zone > Read
+- Zone > DNS > Edit，仅在让 StunDeck 管理 DNS 时需要
+- Zone > Single Redirect > Edit
+- Zone Resources > Include > Specific zone
 
 详细说明见 [Cloudflare 配置](docs/cloudflare.md)。
 

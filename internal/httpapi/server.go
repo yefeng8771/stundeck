@@ -68,6 +68,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /internal/v1/natmap-event", s.natmapEvent)
 
 	mux.Handle("GET /api/v1/status", s.protected(http.HandlerFunc(s.status)))
+	mux.Handle("POST /api/v1/diagnostics/network", s.protected(http.HandlerFunc(s.diagnoseNetwork)))
 	mux.Handle("GET /api/v1/access-policy", s.protected(http.HandlerFunc(s.getAccessPolicy)))
 	mux.Handle("PUT /api/v1/access-policy", s.protected(http.HandlerFunc(s.updateAccessPolicy)))
 	mux.Handle("GET /api/v1/auth/me", s.protected(http.HandlerFunc(s.me)))

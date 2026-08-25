@@ -6,8 +6,8 @@ const { connections, reload } = useDashboardContext()
 </script>
 
 <template>
-  <div class="page-stack narrow-page">
-    <header class="page-heading"><div><p class="eyebrow">CLOUDFLARE</p><h1>Cloudflare 连接</h1><p>管理 Zone 凭据、DNS 与动态重定向所使用的连接。</p></div></header>
+  <div class="page-stack cloudflare-page">
+    <header class="page-heading"><div><p class="eyebrow">STEP 01 · CLOUDFLARE</p><h1>先连接 Cloudflare</h1><p>按最小权限创建 Token，验证可见 Zone，再进入映射服务。</p></div></header>
     <CloudflarePanel :connections="connections" @changed="reload" />
   </div>
 </template>

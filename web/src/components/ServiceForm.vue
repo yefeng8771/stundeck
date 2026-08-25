@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { RouterLink } from 'vue-router'
 import { api } from '../api'
 import { createServiceDraft, serviceToDraft } from '../serviceForm'
 import type { CloudflareConnection, Service } from '../types'
@@ -82,7 +83,8 @@ async function submit() {
       <label v-if="form.gatewayMode !== 'none'">网关 IP（可选）<input v-model.trim="form.gatewayAddress" inputmode="numeric" placeholder="自动发现，例如 192.168.1.1" /><small>留空自动发现；多路由环境建议明确填写</small></label>
       <label>发布方式<select v-model="form.publishMode"><option value="direct">仅公网映射</option><option value="redirect">Cloudflare Redirect</option></select></label>
       <template v-if="redirectMode">
-        <label>Cloudflare 连接<select v-model="form.cloudflareConnectionId" required><option value="" disabled>选择连接</option><option v-for="connection in connections" :key="connection.id" :value="connection.id">{{ connection.name }} · {{ connection.zoneName }}</option></select></label>
+        <div v-if="connections.length === 0" class="span-2 inline-prerequisite"><div><strong>还没有 Cloudflare 连接</strong><p>先创建并验证最小权限 Token，再回来选择 Redirect。</p></div><RouterLink class="button small secondary" to="/cloudflare#token-setup">去配置</RouterLink></div>
+        <label>Cloudflare 连接<select v-model="form.cloudflareConnectionId" required :disabled="connections.length === 0"><option value="" disabled>选择连接</option><option v-for="connection in connections" :key="connection.id" :value="connection.id">{{ connection.name }} · {{ connection.zoneName }}</option></select></label>
         <label>入口域名<input v-model.trim="form.entryHostname" required placeholder="nas.example.com" /></label>
         <label>目标协议<select v-model="form.scheme"><option value="http">HTTP</option><option value="https">HTTPS</option></select></label>
         <label>跳转状态<select v-model.number="form.redirectStatus"><option :value="302">302 Temporary</option><option :value="307">307 Preserve method</option></select></label>
@@ -96,7 +98,7 @@ async function submit() {
         <span v-else />
         <div class="button-group">
           <button v-if="editing" class="button secondary" type="button" :disabled="busy" @click="emit('cancel')">取消</button>
-          <button class="button primary" type="submit" :disabled="busy">{{ submitLabel }}</button>
+          <button class="button primary" type="submit" :disabled="busy || (redirectMode && connections.length === 0)">{{ submitLabel }}</button>
         </div>
       </div>
     </form>

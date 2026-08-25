@@ -17,8 +17,8 @@ let timer: number | undefined
 
 const navigation = [
   { to: '/', label: '运行概览', code: '01' },
-  { to: '/services', label: '映射服务', code: '02' },
-  { to: '/cloudflare', label: 'Cloudflare', code: '03' },
+  { to: '/cloudflare', label: 'Cloudflare', code: '02' },
+  { to: '/services', label: '映射服务', code: '03' },
   { to: '/webhooks', label: 'Webhook', code: '04' },
   { to: '/security', label: '安全设置', code: '05' },
   { to: '/events', label: '事件记录', code: '06' },
