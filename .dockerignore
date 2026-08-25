@@ -7,3 +7,6 @@ data
 bin
 coverage
 web/node_modules
+dist-fpk
+fnpack
+fnpack-*

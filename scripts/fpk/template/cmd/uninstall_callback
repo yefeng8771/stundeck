@@ -1,0 +1,31 @@
+#!/bin/bash
+set -eu
+
+fail() {
+    printf '%s\n' "$1" > "${TRIM_TEMP_LOGFILE:-/dev/stderr}"
+    exit 1
+}
+
+data_action=${wizard_data_action:-keep}
+
+case "$data_action" in
+    keep)
+        exit 0
+        ;;
+    delete)
+        pkgvar="${TRIM_PKGVAR:-}"
+        case "$pkgvar" in
+            /*) ;;
+            *) fail "应用数据目录无效，已取消删除。" ;;
+        esac
+        case "$pkgvar" in
+            /|*//*|*/../*|*/..|*/./*|*/.) fail "应用数据目录不安全，已取消删除。" ;;
+        esac
+
+        data_dir="${pkgvar%/}/data"
+        rm -rf -- "$data_dir"
+        ;;
+    *) fail "卸载数据选项无效，已取消删除。" ;;
+esac
+
+exit 0

@@ -1,0 +1,33 @@
+[
+  {
+    "stepTitle": "确认卸载 StunDeck",
+    "items": [
+      {
+        "type": "tips",
+        "helpText": "stundeck.db 与 master.key 必须成对保留。删除数据会永久移除管理员、服务、事件、Cloudflare Token 和 Webhook Secret，且无法恢复。"
+      },
+      {
+        "type": "radio",
+        "field": "wizard_data_action",
+        "label": "应用数据",
+        "initValue": "keep",
+        "options": [
+          {
+            "label": "保留数据（推荐）",
+            "value": "keep"
+          },
+          {
+            "label": "永久删除数据",
+            "value": "delete"
+          }
+        ],
+        "rules": [
+          {
+            "required": true,
+            "message": "请选择如何处理应用数据"
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -1,0 +1,15 @@
+{
+  ".url": {
+    "stundeck-fpk.Application": {
+      "title": "StunDeck",
+      "icon": "images/icon_{0}.png",
+      "type": "url",
+      "protocol": "http",
+      "url": "/cgi/ThirdParty/stundeck-fpk/index.cgi/",
+      "allUsers": false,
+      "control": {
+        "accessPerm": "readonly"
+      }
+    }
+  }
+}

@@ -57,6 +57,19 @@ make build
 
 `stundeck-notify` 和 `natmap` 必须位于 `PATH`，也可以通过环境变量指定完整路径。
 
+### 飞牛 fnOS FPK
+
+仓库包含飞牛管理的 Docker FPK 模板、安装/卸载向导和打包脚本。FPK 使用 host network，并把 fnOS 包数据目录映射到 `/var/lib/stundeck`；普通 Docker Compose 和原生二进制模式保持不变。
+
+```bash
+FNPACK_BIN=/absolute/path/to/fnpack \
+FPK_VERSION=0.1.0 \
+FPK_IMAGE_TAG=v0.1.0 \
+make fpk
+```
+
+正式打包前必须先发布同标签的多架构镜像。完整的目录、安装配置、数据备份、升级和排障说明见 [飞牛 fnOS FPK 打包](scripts/fpk/README.md)。
+
 ## Cloudflare Token
 
 不要使用 Global API Key。推荐创建仅限目标 Zone 的 API Token：
@@ -100,6 +113,7 @@ StunDeck 为每个 Redirect Rule 写入稳定的 `ref`，只通过 Cloudflare �
 ## 文档
 
 - [部署与运行](docs/deployment.md)
+- [飞牛 fnOS FPK 打包](scripts/fpk/README.md)
 - [Cloudflare 配置](docs/cloudflare.md)
 - [Webhook 协议](docs/webhooks.md)
 - [架构说明](docs/architecture.md)

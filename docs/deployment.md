@@ -69,6 +69,21 @@ export STUNDECK_NOTIFY_BINARY=/usr/local/bin/stundeck-notify
 
 通过局域网访问时，将监听地址改为 `0.0.0.0:8080`，并确保本地管理员密码足够强。不要直接把管理端口暴露到互联网。
 
+## 飞牛 fnOS FPK
+
+FPK 模式与普通模式运行同一个容器镜像和应用二进制，只改变平台负责的目录与配置来源：
+
+| 用途 | 普通 Docker | fnOS FPK | FPK 容器内路径 |
+| --- | --- | --- | --- |
+| 持久化数据 | Docker volume 或宿主机目录 | `${TRIM_PKGVAR}/data` | `/var/lib/stundeck/data` |
+| SQLite | `STUNDECK_DATA_DIR/stundeck.db` | `${TRIM_PKGVAR}/data/stundeck.db` | `/var/lib/stundeck/data/stundeck.db` |
+| 主密钥 | `STUNDECK_DATA_DIR/master.key` | `${TRIM_PKGVAR}/data/master.key` | `/var/lib/stundeck/data/master.key` |
+| 运行配置 | Compose `environment` | `${TRIM_PKGETC}/stundeck.env` | 入口脚本导出的环境变量 |
+
+FPK 不申请用户共享目录权限，因为数据库和主密钥包含敏感状态。fnOS 应用 ID 固定为 `stundeck-fpk`，与普通 Compose 的 `stundeck` 项目名隔离，避免安装、失败回滚或卸载清理影响普通模式。fnOS 创建 Docker 项目时，包用户尚不能创建 `${TRIM_PKGETC}`/`${TRIM_PKGVAR}`，所以生命周期脚本用 root 完成受限的安装目录初始化：在 `20000-59999` 中随机选择空闲 TCP 端口、原子记录到 `${TRIM_PKGETC}/stundeck.env` 和 `${TRIM_PKGETC}/stundeck.port`，然后立即将配置和数据目录交还 `${TRIM_UID}:${TRIM_GID}`。部分 fnOS 版本升级时会通过 root 拥有的暂存区复制旧数据，升级回调会递归恢复包用户所有权。长期运行的容器显式使用该 UID/GID，并保留只读根文件系统、capability 清空与 `no-new-privileges`。升级和重启复用已记录端口，桌面入口通过 fnOS CGI 读取记录后跳转。安装向导只设置时区和安全 Cookie；管理员、访问模式、Cloudflare Token 与 Webhook 继续通过 StunDeck 自身的首次设置和管理页面配置。
+
+构建、安装、升级和排障步骤见 [飞牛 fnOS FPK 打包](../scripts/fpk/README.md)。
+
 ## 数据与备份
 
 数据目录包含：
