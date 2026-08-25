@@ -1,0 +1,49 @@
+[
+  {
+    "stepTitle": "配置 StunDeck",
+    "items": [
+      {
+        "type": "text",
+        "field": "wizard_timezone",
+        "label": "时区",
+        "initValue": "Asia/Shanghai",
+        "rules": [
+          {
+            "required": true,
+            "message": "请输入时区"
+          },
+          {
+            "pattern": "^[A-Za-z0-9_+./-]{1,64}$",
+            "message": "请输入有效的 IANA 时区，例如 Asia/Shanghai"
+          }
+        ]
+      },
+      {
+        "type": "radio",
+        "field": "wizard_secure_cookies",
+        "label": "启用 HTTPS 安全 Cookie",
+        "initValue": "false",
+        "options": [
+          {
+            "label": "关闭（直接通过 HTTP 访问）",
+            "value": "false"
+          },
+          {
+            "label": "启用（仅通过 HTTPS 反向代理访问）",
+            "value": "true"
+          }
+        ],
+        "rules": [
+          {
+            "required": true,
+            "message": "请选择 Cookie 安全模式"
+          }
+        ]
+      },
+      {
+        "type": "tips",
+        "helpText": "安装时会自动选择并记录一个空闲的随机高位端口，升级和重启会继续使用该端口。仅当你会通过 HTTPS 反向代理访问时启用安全 Cookie；直接使用桌面图标打开 HTTP 地址时请保持关闭。安装完成后，首次打开 StunDeck 再创建管理员并配置 Cloudflare Token。"
+      }
+    ]
+  }
+]

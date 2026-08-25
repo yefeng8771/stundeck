@@ -1,4 +1,4 @@
-.PHONY: bootstrap build test dev docker-build
+.PHONY: bootstrap build test dev docker-build fpk
 
 VERSION ?= dev
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
@@ -24,3 +24,6 @@ dev:
 
 docker-build:
 	docker build --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) -t stundeck:local .
+
+fpk:
+	bash scripts/fpk/build-fpk.sh

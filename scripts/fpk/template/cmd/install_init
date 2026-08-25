@@ -1,0 +1,150 @@
+#!/bin/bash
+set -eu
+
+umask 077
+
+fail() {
+    printf '%s\n' "$1" > "${TRIM_TEMP_LOGFILE:-/dev/stderr}"
+    exit 1
+}
+
+validate_package_path() {
+    case "$1" in
+        /*) ;;
+        *) fail "$2 无效。" ;;
+    esac
+    case "$1" in
+        /|*//*|*/../*|*/..|*/./*|*/.) fail "$2 不安全。" ;;
+    esac
+}
+
+validate_package_path "${TRIM_PKGETC:-}" "应用配置目录"
+validate_package_path "${TRIM_PKGVAR:-}" "应用数据目录"
+
+case "${TRIM_UID:-}" in
+    ''|*[!0-9]*) fail "飞牛没有提供有效的应用用户 UID。" ;;
+esac
+case "${TRIM_GID:-}" in
+    ''|*[!0-9]*) fail "飞牛没有提供有效的应用用户 GID。" ;;
+esac
+[ "$TRIM_UID" -gt 0 ] 2>/dev/null || fail "应用用户 UID 不能是 root。"
+[ "$TRIM_GID" -gt 0 ] 2>/dev/null || fail "应用用户 GID 不能是 root。"
+
+port_in_use() {
+    local candidate=$1
+
+    if command -v ss >/dev/null 2>&1; then
+        ss -H -ltn 2>/dev/null | awk -v target="$candidate" '
+            {
+                address = $4
+                sub(/^.*:/, "", address)
+                if (address == target) {
+                    found = 1
+                }
+            }
+            END { exit(found ? 0 : 1) }
+        '
+        return
+    fi
+    if command -v netstat >/dev/null 2>&1; then
+        netstat -ltn 2>/dev/null | awk -v target="$candidate" '
+            NR > 2 {
+                address = $4
+                sub(/^.*:/, "", address)
+                if (address == target) {
+                    found = 1
+                }
+            }
+            END { exit(found ? 0 : 1) }
+        '
+        return
+    fi
+    fail "系统缺少 ss 或 netstat，无法安全选择控制面端口。"
+}
+
+validate_port() {
+    case "$1" in
+        ''|*[!0-9]*) fail "控制面端口必须是数字。" ;;
+    esac
+    [ "$1" -ge 1024 ] 2>/dev/null && [ "$1" -le 65535 ] 2>/dev/null \
+        || fail "控制面端口必须在 1024-65535 之间。"
+}
+
+random_number() {
+    local value=''
+    if command -v od >/dev/null 2>&1 && [ -r /dev/urandom ]; then
+        value=$(od -An -N4 -tu4 /dev/urandom 2>/dev/null | tr -d '[:space:]')
+    fi
+    case "$value" in
+        ''|*[!0-9]*) value=$(( (RANDOM << 15) ^ RANDOM ^ $$ )) ;;
+    esac
+    printf '%s\n' "$value"
+}
+
+choose_port() {
+    local attempt=1 candidate random_value
+    while [ "$attempt" -le 128 ]; do
+        random_value=$(random_number)
+        candidate=$((20000 + random_value % 40000))
+        if ! port_in_use "$candidate"; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+        attempt=$((attempt + 1))
+    done
+    fail "尝试 128 次后仍找不到空闲的随机高位端口。"
+}
+
+if [ -s "${TRIM_PKGETC}/stundeck.port" ]; then
+    IFS= read -r port < "${TRIM_PKGETC}/stundeck.port" \
+        || fail "已有的控制面端口记录无法读取。"
+    validate_port "$port"
+    port_in_use "$port" && fail "已有的控制面端口 ${port} 已被占用。"
+elif [ -n "${wizard_port:-}" ]; then
+    # Kept for appcenter-cli automation and advanced installations. The GUI does
+    # not expose this field and therefore uses a random high port by default.
+    port=$wizard_port
+    validate_port "$port"
+    port_in_use "$port" && fail "控制面端口 ${port} 已被占用。"
+else
+    port=$(choose_port)
+fi
+
+timezone="${wizard_timezone:-Asia/Shanghai}"
+printf '%s' "$timezone" | grep -Eq '^[A-Za-z0-9_+./-]{1,64}$' \
+    || fail "时区格式无效，请使用 Asia/Shanghai 这样的 IANA 时区。"
+
+case "${wizard_secure_cookies:-false}" in
+    true|TRUE|True|1|yes|YES|on|ON) secure_cookies=true ;;
+    false|FALSE|False|0|no|NO|off|OFF|'') secure_cookies=false ;;
+    *) fail "HTTPS 安全 Cookie 选项无效。" ;;
+esac
+
+# fnOS prepares Docker projects before it creates package-owned etc/var paths.
+# Docker FPK lifecycle scripts therefore run as root only for this narrow setup
+# step. The long-running container still uses TRIM_UID:TRIM_GID explicitly.
+install -d -m 0700 "$TRIM_PKGETC" "$TRIM_PKGVAR" "$TRIM_PKGVAR/data"
+chown -R -- "$TRIM_UID:$TRIM_GID" "$TRIM_PKGETC" "$TRIM_PKGVAR"
+
+config_tmp="${TRIM_PKGETC}/.stundeck.env.$$"
+port_tmp="${TRIM_PKGETC}/.stundeck.port.$$"
+trap 'rm -f -- "$config_tmp" "$port_tmp"' EXIT HUP INT TERM
+{
+    printf 'STUNDECK_FPK_PORT=%s\n' "$port"
+    printf 'STUNDECK_LISTEN=0.0.0.0:%s\n' "$port"
+    printf 'STUNDECK_SECURE_COOKIES=%s\n' "$secure_cookies"
+    printf 'STUNDECK_STUN_SERVER=turn.cloudflare.com:3478\n'
+    printf 'STUNDECK_KEEPALIVE_SERVER=www.cloudflare.com:80\n'
+    printf 'TZ=%s\n' "$timezone"
+    printf 'HTTP_PROXY=\nHTTPS_PROXY=\nALL_PROXY=\n'
+    printf 'http_proxy=\nhttps_proxy=\nall_proxy=\n'
+} > "$config_tmp"
+printf '%s\n' "$port" > "$port_tmp"
+chmod 0600 "$config_tmp"
+chmod 0644 "$port_tmp"
+chown "$TRIM_UID:$TRIM_GID" "$config_tmp" "$port_tmp"
+mv -f -- "$config_tmp" "$TRIM_PKGETC/stundeck.env"
+mv -f -- "$port_tmp" "$TRIM_PKGETC/stundeck.port"
+trap - EXIT HUP INT TERM
+
+exit 0

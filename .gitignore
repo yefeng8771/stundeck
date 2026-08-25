@@ -7,3 +7,6 @@ coverage/
 bin/
 web/node_modules/
 *.log
+dist-fpk/
+fnpack
+fnpack-*

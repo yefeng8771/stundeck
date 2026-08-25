@@ -1,0 +1,22 @@
+#!/bin/bash
+set -u
+
+container_name="stundeck-fpk"
+
+case "${1:-}" in
+    start|stop)
+        # fnOS owns the lifecycle of the declared Docker project.
+        exit 0
+        ;;
+    status)
+        if docker inspect --format '{{.State.Status}}' "$container_name" 2>/dev/null \
+            | grep -qx running; then
+            exit 0
+        fi
+        exit 3
+        ;;
+    *)
+        printf '%s\n' "未知的应用控制命令：${1:-<empty>}" > "${TRIM_TEMP_LOGFILE:-/dev/stderr}"
+        exit 1
+        ;;
+esac

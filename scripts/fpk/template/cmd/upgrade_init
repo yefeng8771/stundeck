@@ -1,0 +1,30 @@
+#!/bin/bash
+set -eu
+
+fail() {
+    printf '%s\n' "$1" > "${TRIM_TEMP_LOGFILE:-/dev/stderr}"
+    exit 1
+}
+
+[ -d "${TRIM_PKGVAR}/data" ] || fail "StunDeck 数据目录缺失，无法安全升级。"
+[ -s "${TRIM_PKGETC}/stundeck.env" ] || fail "StunDeck 配置缺失，无法安全升级。"
+
+# 从早期 FPK 升级时补建桌面 CGI 使用的端口记录；已有记录始终保持不变。
+if [ ! -s "${TRIM_PKGETC}/stundeck.port" ]; then
+    port=$(sed -n \
+        -e 's/^STUNDECK_FPK_PORT=\([0-9][0-9]*\)$/\1/p' \
+        -e 's/^STUNDECK_LISTEN=[^:]*:\([0-9][0-9]*\)$/\1/p' \
+        "${TRIM_PKGETC}/stundeck.env" | head -n 1)
+    case "$port" in
+        ''|*[!0-9]*) fail "旧配置中没有可迁移的 StunDeck 端口。" ;;
+    esac
+    [ "$port" -ge 1024 ] 2>/dev/null && [ "$port" -le 65535 ] 2>/dev/null \
+        || fail "旧配置中的 StunDeck 端口无效。"
+    port_tmp="${TRIM_PKGETC}/.stundeck.port.$$"
+    trap 'rm -f -- "$port_tmp"' EXIT HUP INT TERM
+    printf '%s\n' "$port" > "$port_tmp"
+    chmod 0644 "$port_tmp"
+    mv -f -- "$port_tmp" "${TRIM_PKGETC}/stundeck.port"
+    trap - EXIT HUP INT TERM
+fi
+exit 0

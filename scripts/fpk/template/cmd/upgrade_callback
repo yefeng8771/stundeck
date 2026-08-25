@@ -1,0 +1,52 @@
+#!/bin/bash
+set -eu
+
+fail() {
+    printf '%s\n' "$1" > "${TRIM_TEMP_LOGFILE:-/dev/stderr}"
+    exit 1
+}
+
+case "${TRIM_PKGETC:-}" in
+    /*) ;;
+    *) fail "升级后的应用配置目录无效。" ;;
+esac
+case "${TRIM_PKGVAR:-}" in
+    /*) ;;
+    *) fail "升级后的应用数据目录无效。" ;;
+esac
+case "${TRIM_PKGETC}" in
+    /|*//*|*/../*|*/..|*/./*|*/.) fail "升级后的应用配置目录不安全。" ;;
+esac
+case "${TRIM_PKGVAR}" in
+    /|*//*|*/../*|*/..|*/./*|*/.) fail "升级后的应用数据目录不安全。" ;;
+esac
+case "${TRIM_UID:-}" in
+    ''|*[!0-9]*) fail "飞牛没有提供有效的应用用户 UID。" ;;
+esac
+case "${TRIM_GID:-}" in
+    ''|*[!0-9]*) fail "飞牛没有提供有效的应用用户 GID。" ;;
+esac
+[ "$TRIM_UID" -gt 0 ] 2>/dev/null || fail "应用用户 UID 不能是 root。"
+[ "$TRIM_GID" -gt 0 ] 2>/dev/null || fail "应用用户 GID 不能是 root。"
+
+if [ ! -d "${TRIM_PKGVAR}/data" ] \
+    || [ ! -s "${TRIM_PKGETC}/stundeck.env" ] \
+    || [ ! -s "${TRIM_PKGETC}/stundeck.port" ]; then
+    fail "升级后的 StunDeck 数据或配置缺失。"
+fi
+
+# fnOS may preserve package data through a root-owned staging area during an
+# upgrade. Normalize ownership before the service is enabled again so SQLite
+# and the encryption key remain writable by the non-root package user.
+chown -R -- "${TRIM_UID}:${TRIM_GID}" "${TRIM_PKGETC}" "${TRIM_PKGVAR}"
+chmod 0600 "${TRIM_PKGETC}/stundeck.env"
+chmod 0644 "${TRIM_PKGETC}/stundeck.port"
+chmod 0700 "${TRIM_PKGVAR}/data"
+for private_file in \
+    "${TRIM_PKGVAR}/data/master.key" \
+    "${TRIM_PKGVAR}/data/stundeck.db" \
+    "${TRIM_PKGVAR}/data/stundeck.db-shm" \
+    "${TRIM_PKGVAR}/data/stundeck.db-wal"; do
+    [ ! -e "$private_file" ] || chmod 0600 "$private_file"
+done
+exit 0

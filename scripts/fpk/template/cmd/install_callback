@@ -1,0 +1,29 @@
+#!/bin/bash
+set -eu
+
+fail() {
+    printf '%s\n' "$1" > "${TRIM_TEMP_LOGFILE:-/dev/stderr}"
+    exit 1
+}
+
+case "${TRIM_PKGETC:-}" in
+    /*) ;;
+    *) fail "应用配置目录无效。" ;;
+esac
+case "${TRIM_PKGVAR:-}" in
+    /*) ;;
+    *) fail "应用数据目录无效。" ;;
+esac
+
+if [ ! -s "${TRIM_PKGETC}/stundeck.env" ] \
+    || [ ! -s "${TRIM_PKGETC}/stundeck.port" ] \
+    || [ ! -d "${TRIM_PKGVAR}/data" ]; then
+    fail "StunDeck 的持久化端口、配置或数据目录没有正确创建。"
+fi
+
+chmod 0600 "${TRIM_PKGETC}/stundeck.env"
+chmod 0644 "${TRIM_PKGETC}/stundeck.port"
+chmod 0700 "${TRIM_PKGVAR}/data"
+chown -R -- "${TRIM_UID}:${TRIM_GID}" "${TRIM_PKGETC}" "${TRIM_PKGVAR}"
+
+exit 0

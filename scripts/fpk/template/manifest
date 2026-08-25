@@ -1,0 +1,16 @@
+appname               = stundeck-fpk
+version               = {{VERSION}}
+display_name          = StunDeck
+desc                  = 本地优先的 STUN 映射控制面板，管理 NATMap、Cloudflare Redirect Rules 和签名 Webhook。
+source                = thirdparty
+platform              = all
+maintainer            = Nciae-Zyh
+maintainer_url        = https://github.com/Nciae-Zyh/stundeck
+distributor           = Nciae-Zyh
+distributor_url       = https://github.com/Nciae-Zyh/stundeck
+desktop_uidir         = ui
+desktop_applaunchname = stundeck-fpk.Application
+ctl_stop              = true
+checkport              = false
+disable_authorization_path = true
+changelog             = Docker FPK packaging for fnOS with package-managed configuration and persistent data.
