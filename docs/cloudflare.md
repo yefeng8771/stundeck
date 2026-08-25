@@ -6,11 +6,13 @@ StunDeck 不支持 Global API Key。创建 API Token 时，将资源限制到一
 
 | 权限 | 用途 |
 | --- | --- |
-| Zone Read | 在初始化向导中列出 Zone |
-| DNS Write | 创建或更新入口与目标 DNS |
-| Dynamic URL Redirects Write | 创建和更新 Single Redirect |
+| Zone > Zone > Read | 在连接向导中列出 Zone |
+| Zone > DNS > Edit | 创建或更新入口与目标 DNS；不启用自动 DNS 时可省略 |
+| Zone > Single Redirect > Edit | 创建和更新 Single Redirect |
 
-Token 会先通过 `/user/tokens/verify` 检查状态，再列出可访问 Zone。Token 在保存前使用本地 AES-256-GCM 主密钥加密；API 和 Dashboard 后续不会返回完整值。
+资源范围必须选择 `Zone Resources > Include > Specific zone`，不要授权全部 Zone。Cloudflare 的首个 API Token 必须在 Dashboard 中由用户确认创建；StunDeck 不申请 `API Tokens Edit`，因为该权限可以创建具备任意资源权限的新 Token。
+
+Cloudflare 页可一键打开[官方 API Token 管理页面](https://dash.cloudflare.com/profile/api-tokens)，并复制上述最小权限清单。Token 会先通过 `/user/tokens/verify` 检查状态，再列出可访问 Zone。Token 在保存前使用本地 AES-256-GCM 主密钥加密；API 和 Dashboard 后续不会返回完整值。
 
 ## Redirect 工作方式
 

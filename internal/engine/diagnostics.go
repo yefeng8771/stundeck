@@ -43,6 +43,26 @@ type DiagnosticReport struct {
 	Checks                  []DiagnosticCheck `json:"checks"`
 }
 
+type NetworkDiagnosticReport struct {
+	Outcome   string            `json:"outcome"`
+	NATType   string            `json:"natType"`
+	UDPSTUN   bool              `json:"udpStun"`
+	TCPSTUN   bool              `json:"tcpStun"`
+	CheckedAt time.Time         `json:"checkedAt"`
+	Checks    []DiagnosticCheck `json:"checks"`
+}
+
+type stunBindingResult struct {
+	Family string
+	Mapped *net.UDPAddr
+	Other  *net.UDPAddr
+}
+
+type natMappingResult struct {
+	Type    string
+	Message string
+}
+
 type diagnosticTask struct {
 	key      string
 	label    string
@@ -171,6 +191,68 @@ func (m *Manager) Diagnose(ctx context.Context, service store.Service) Diagnosti
 	report.GatewayReady = service.GatewayMode != "" && service.GatewayMode != "none" && checksPass(checks, "gateway_discovery", "gateway_mapping")
 	report.Outcome = diagnosticOutcome(checks)
 	return report
+}
+
+func (m *Manager) DiagnoseNetwork(ctx context.Context) NetworkDiagnosticReport {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	natType := "unknown"
+	udpSTUN := false
+	tcpSTUN := false
+	tasks := []diagnosticTask{
+		{key: "proxy_environment", label: "直连网络", category: "environment", run: checkProxyEnvironment},
+		{key: "natmap_binary", label: "NATMap 程序", category: "environment", run: func(context.Context) (string, string) {
+			if !m.Available() {
+				return "fail", "找不到 NATMap 程序，无法建立公网映射"
+			}
+			return "pass", "NATMap 程序可执行"
+		}},
+		{key: "stun_udp", label: "UDP STUN", category: "stun", run: func(checkCtx context.Context) (string, string) {
+			result, err := discoverNATMapping(checkCtx, m.config.STUNServer)
+			if err != nil {
+				return "fail", "UDP STUN Binding 失败：" + conciseNetworkError(err)
+			}
+			udpSTUN = true
+			natType = result.Type
+			status := "pass"
+			if result.Type == "unknown" || result.Type == "nat_detected" {
+				status = "warn"
+			}
+			return status, result.Message
+		}},
+		{key: "stun_tcp", label: "TCP STUN", category: "stun", run: func(checkCtx context.Context) (string, string) {
+			family, err := stunBinding(checkCtx, "tcp", m.config.STUNServer)
+			if err != nil {
+				return "warn", "TCP STUN Binding 失败：" + conciseNetworkError(err)
+			}
+			tcpSTUN = true
+			return "pass", "TCP STUN Binding 成功（" + family + "）"
+		}},
+	}
+
+	checks := make([]DiagnosticCheck, len(tasks))
+	var wait sync.WaitGroup
+	for index, task := range tasks {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			started := time.Now()
+			checkCtx, checkCancel := context.WithTimeout(ctx, diagnosticTimeout)
+			defer checkCancel()
+			status, message := task.run(checkCtx)
+			checks[index] = DiagnosticCheck{
+				Key: task.key, Label: task.label, Category: task.category,
+				Status: status, Message: message, DurationMS: time.Since(started).Milliseconds(),
+			}
+		}()
+	}
+	wait.Wait()
+
+	return NetworkDiagnosticReport{
+		Outcome: diagnosticOutcome(checks), NATType: natType,
+		UDPSTUN: udpSTUN, TCPSTUN: tcpSTUN, CheckedAt: time.Now(), Checks: checks,
+	}
 }
 
 func requiredSTUNKeys(protocol string) []string {
@@ -344,10 +426,8 @@ func dialTCP(ctx context.Context, address string) error {
 }
 
 func stunBinding(ctx context.Context, network, address string) (string, error) {
-	request := make([]byte, 20)
-	binary.BigEndian.PutUint16(request[0:2], 0x0001)
-	binary.BigEndian.PutUint32(request[4:8], 0x2112A442)
-	if _, err := rand.Read(request[8:20]); err != nil {
+	request, err := newSTUNBindingRequest()
+	if err != nil {
 		return "", err
 	}
 
@@ -386,46 +466,216 @@ func stunBinding(ctx context.Context, network, address string) (string, error) {
 		}
 		response = buffer[:length]
 	}
-	return parseSTUNBindingResponse(response, request[8:20])
+	result, err := parseSTUNResponse(response, request[8:20])
+	if err != nil {
+		return "", err
+	}
+	return result.Family, nil
 }
 
 func parseSTUNBindingResponse(response, transactionID []byte) (string, error) {
+	result, err := parseSTUNResponse(response, transactionID)
+	if err != nil {
+		return "", err
+	}
+	return result.Family, nil
+}
+
+func parseSTUNResponse(response, transactionID []byte) (stunBindingResult, error) {
 	if len(response) < 20 || binary.BigEndian.Uint32(response[4:8]) != 0x2112A442 {
-		return "", errors.New("invalid STUN response")
+		return stunBindingResult{}, errors.New("invalid STUN response")
 	}
 	if !equalBytes(response[8:20], transactionID) {
-		return "", errors.New("STUN transaction mismatch")
+		return stunBindingResult{}, errors.New("STUN transaction mismatch")
 	}
 	messageType := binary.BigEndian.Uint16(response[0:2])
 	if messageType != 0x0101 {
-		return "", fmt.Errorf("STUN server returned message 0x%04x", messageType)
+		return stunBindingResult{}, fmt.Errorf("STUN server returned message 0x%04x", messageType)
 	}
 	bodyLength := int(binary.BigEndian.Uint16(response[2:4]))
 	if 20+bodyLength > len(response) {
-		return "", errors.New("truncated STUN response")
+		return stunBindingResult{}, errors.New("truncated STUN response")
 	}
+	result := stunBindingResult{}
 	for offset := 20; offset+4 <= 20+bodyLength; {
 		attributeType := binary.BigEndian.Uint16(response[offset : offset+2])
 		attributeLength := int(binary.BigEndian.Uint16(response[offset+2 : offset+4]))
 		valueStart := offset + 4
 		valueEnd := valueStart + attributeLength
 		if valueEnd > len(response) {
-			return "", errors.New("truncated STUN attribute")
+			return stunBindingResult{}, errors.New("truncated STUN attribute")
 		}
-		if attributeType == 0x0020 || attributeType == 0x0001 {
-			if attributeLength < 8 {
-				return "", errors.New("invalid mapped address")
+		if attributeType == 0x0020 || attributeType == 0x0001 || attributeType == 0x802c {
+			address, err := parseSTUNAddress(response[valueStart:valueEnd], attributeType == 0x0020, transactionID)
+			if err != nil {
+				return stunBindingResult{}, err
 			}
-			switch response[valueStart+1] {
-			case 0x01:
-				return "IPv4", nil
-			case 0x02:
-				return "IPv6", nil
+			if attributeType == 0x802c {
+				result.Other = address
+			} else if result.Mapped == nil || attributeType == 0x0020 {
+				result.Mapped = address
+				if address.IP.To4() != nil {
+					result.Family = "IPv4"
+				} else {
+					result.Family = "IPv6"
+				}
 			}
 		}
 		offset = valueEnd + ((4 - attributeLength%4) % 4)
 	}
-	return "", errors.New("STUN response has no mapped address")
+	if result.Mapped == nil {
+		return stunBindingResult{}, errors.New("STUN response has no mapped address")
+	}
+	return result, nil
+}
+
+func parseSTUNAddress(value []byte, xor bool, transactionID []byte) (*net.UDPAddr, error) {
+	if len(value) < 8 {
+		return nil, errors.New("invalid STUN address")
+	}
+	port := binary.BigEndian.Uint16(value[2:4])
+	if xor {
+		port ^= uint16(0x2112A442 >> 16)
+	}
+	switch value[1] {
+	case 0x01:
+		address := append(net.IP(nil), value[4:8]...)
+		if xor {
+			magic := make([]byte, 4)
+			binary.BigEndian.PutUint32(magic, 0x2112A442)
+			for index := range address {
+				address[index] ^= magic[index]
+			}
+		}
+		return &net.UDPAddr{IP: address, Port: int(port)}, nil
+	case 0x02:
+		if len(value) < 20 {
+			return nil, errors.New("invalid IPv6 STUN address")
+		}
+		address := append(net.IP(nil), value[4:20]...)
+		if xor {
+			mask := make([]byte, 16)
+			binary.BigEndian.PutUint32(mask[0:4], 0x2112A442)
+			copy(mask[4:], transactionID)
+			for index := range address {
+				address[index] ^= mask[index]
+			}
+		}
+		return &net.UDPAddr{IP: address, Port: int(port)}, nil
+	default:
+		return nil, errors.New("unknown STUN address family")
+	}
+}
+
+func newSTUNBindingRequest() ([]byte, error) {
+	request := make([]byte, 20)
+	binary.BigEndian.PutUint16(request[0:2], 0x0001)
+	binary.BigEndian.PutUint32(request[4:8], 0x2112A442)
+	if _, err := rand.Read(request[8:20]); err != nil {
+		return nil, err
+	}
+	return request, nil
+}
+
+func discoverNATMapping(ctx context.Context, address string) (natMappingResult, error) {
+	primary, err := net.ResolveUDPAddr("udp", address)
+	if err != nil {
+		return natMappingResult{}, err
+	}
+	network := "udp6"
+	if primary.IP.To4() != nil {
+		network = "udp4"
+	}
+	route, err := net.DialUDP(network, nil, primary)
+	if err != nil {
+		return natMappingResult{}, err
+	}
+	localRoute, ok := route.LocalAddr().(*net.UDPAddr)
+	_ = route.Close()
+	if !ok {
+		return natMappingResult{}, errors.New("cannot determine local UDP address")
+	}
+	connection, err := net.ListenUDP(network, &net.UDPAddr{IP: localRoute.IP, Zone: localRoute.Zone})
+	if err != nil {
+		return natMappingResult{}, err
+	}
+	defer connection.Close()
+	local := connection.LocalAddr().(*net.UDPAddr)
+
+	first, err := stunBindingUDP(ctx, connection, primary)
+	if err != nil {
+		return natMappingResult{}, err
+	}
+	if sameUDPAddress(local, first.Mapped) {
+		return natMappingResult{Type: "open_internet", Message: "UDP STUN 可用，未检测到地址转换"}, nil
+	}
+	if first.Other == nil {
+		return natMappingResult{Type: "nat_detected", Message: "UDP STUN 可用，已检测到 NAT；服务器未提供 RFC 5780 详细类型扩展"}, nil
+	}
+
+	secondTarget := &net.UDPAddr{IP: first.Other.IP, Port: primary.Port, Zone: first.Other.Zone}
+	second, err := stunBindingUDP(ctx, connection, secondTarget)
+	if err != nil {
+		return natMappingResult{Type: "unknown", Message: "UDP STUN 可用；备用地址探测失败，无法确认 NAT 类型"}, nil
+	}
+	if sameUDPAddress(first.Mapped, second.Mapped) {
+		return natMappingResult{Type: "endpoint_independent", Message: "UDP STUN 可用，NAT 为端点独立映射"}, nil
+	}
+	third, err := stunBindingUDP(ctx, connection, first.Other)
+	if err != nil {
+		return natMappingResult{Type: "unknown", Message: "UDP STUN 可用；备用端口探测失败，无法确认 NAT 类型"}, nil
+	}
+	typeName := classifyNATMapping(local, first.Mapped, second.Mapped, third.Mapped)
+	if typeName == "address_dependent" {
+		return natMappingResult{Type: typeName, Message: "UDP STUN 可用，NAT 为地址依赖映射"}, nil
+	}
+	return natMappingResult{Type: typeName, Message: "UDP STUN 可用，NAT 为地址和端口依赖映射"}, nil
+}
+
+func stunBindingUDP(ctx context.Context, connection *net.UDPConn, target *net.UDPAddr) (stunBindingResult, error) {
+	request, err := newSTUNBindingRequest()
+	if err != nil {
+		return stunBindingResult{}, err
+	}
+	deadline := time.Now().Add(diagnosticTimeout)
+	if contextDeadline, ok := ctx.Deadline(); ok && contextDeadline.Before(deadline) {
+		deadline = contextDeadline
+	}
+	if err := connection.SetDeadline(deadline); err != nil {
+		return stunBindingResult{}, err
+	}
+	if _, err := connection.WriteToUDP(request, target); err != nil {
+		return stunBindingResult{}, err
+	}
+	buffer := make([]byte, 2048)
+	for {
+		length, _, err := connection.ReadFromUDP(buffer)
+		if err != nil {
+			return stunBindingResult{}, err
+		}
+		result, err := parseSTUNResponse(buffer[:length], request[8:20])
+		if err != nil && strings.Contains(err.Error(), "transaction mismatch") {
+			continue
+		}
+		return result, err
+	}
+}
+
+func classifyNATMapping(local, first, second, third *net.UDPAddr) string {
+	if sameUDPAddress(local, first) {
+		return "open_internet"
+	}
+	if sameUDPAddress(first, second) {
+		return "endpoint_independent"
+	}
+	if sameUDPAddress(second, third) {
+		return "address_dependent"
+	}
+	return "address_port_dependent"
+}
+
+func sameUDPAddress(left, right *net.UDPAddr) bool {
+	return left != nil && right != nil && left.Port == right.Port && left.IP.Equal(right.IP)
 }
 
 func equalBytes(left, right []byte) bool {

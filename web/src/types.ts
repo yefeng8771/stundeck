@@ -85,6 +85,15 @@ export interface DiagnosticReport {
   checks: DiagnosticCheck[]
 }
 
+export interface NetworkDiagnosticReport {
+  outcome: 'pass' | 'warning' | 'fail'
+  natType: 'open_internet' | 'nat_detected' | 'endpoint_independent' | 'address_dependent' | 'address_port_dependent' | 'unknown'
+  udpStun: boolean
+  tcpStun: boolean
+  checkedAt: string
+  checks: DiagnosticCheck[]
+}
+
 export interface EventItem {
   id: string
   serviceId?: string

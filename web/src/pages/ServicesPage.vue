@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { RouterLink } from 'vue-router'
 import { api } from '../api'
 import ServiceForm from '../components/ServiceForm.vue'
 import StatusBadge from '../components/StatusBadge.vue'
@@ -106,6 +107,7 @@ function gatewayModeLabel(mode: Service['gatewayMode']) {
   <div class="page-stack">
     <header class="page-heading"><div><p class="eyebrow">SERVICES</p><h1>映射服务</h1><p>创建、编辑和运行局域网服务的动态公网映射。</p></div><span class="count-chip">{{ services.length }}</span></header>
     <p v-if="error" class="global-error">{{ error }}</p>
+    <section v-if="connections.length === 0" class="prerequisite-callout"><div><p class="eyebrow">OPTIONAL PREREQUISITE</p><strong>要发布 Cloudflare Redirect，请先配置连接</strong><p>只做公网映射可以直接继续；需要自动 DNS 和跳转规则时，请先完成最小权限 Token 配置。</p></div><RouterLink class="button secondary" to="/cloudflare#token-setup">先配置 Cloudflare</RouterLink></section>
     <section class="panel services-panel">
       <div v-if="services.length" class="service-list">
         <div v-for="service in services" :key="service.id" class="service-block">

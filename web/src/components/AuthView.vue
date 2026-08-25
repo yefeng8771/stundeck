@@ -16,7 +16,7 @@ const error = ref('')
 const title = computed(() => (props.mode === 'setup' ? '初始化控制面' : '返回控制面'))
 const subtitle = computed(() =>
   props.mode === 'setup'
-    ? '创建本地管理员。Cloudflare Token 会在登录后单独配置。'
+    ? '创建本地管理员。进入后先检查网络，再按引导配置 Cloudflare。'
     : '使用本地管理员账号继续。',
 )
 
