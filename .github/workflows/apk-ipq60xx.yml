@@ -3,7 +3,7 @@ name: Build apk (IPQ60XX)
 on:
   workflow_dispatch:
   push:
-    tags: ['v*']
+    branches: ['**']
 
 permissions:
   contents: read
