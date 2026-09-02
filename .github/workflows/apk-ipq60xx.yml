@@ -6,7 +6,7 @@ on:
     branches: ['**']
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -96,8 +96,11 @@ jobs:
           find sdk/bin -name 'stundeck*.apk' -exec cp {} dist/ \;
           ls -lh dist
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: stundeck-ipq60xx-apk
-          path: dist/*.apk
-          if-no-files-found: error
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          TAG="v$STUNDECK_VERSION"
+          NOTES="Auto-built IPQ60XX apk from commit ${GITHUB_SHA:0:7}, version $STUNDECK_VERSION, built $(date -u +%Y-%m-%dT%H:%M:%SZ)."
+          gh release create "$TAG" dist/*.apk --repo "$GITHUB_REPOSITORY" --title "Stundeck IPQ60XX apk $TAG" --notes "$NOTES"
