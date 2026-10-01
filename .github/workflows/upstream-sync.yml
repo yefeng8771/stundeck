@@ -33,8 +33,21 @@ jobs:
           before="$(git rev-parse HEAD)"
           upstream_head="$(git rev-parse upstream/main)"
 
-          git merge -X theirs upstream/main --no-edit \
-            -m "chore(sync): 强制合并 Nciae-Zyh/stundeck@${upstream_head:0:7}"
+          if ! git merge -X theirs upstream/main --no-edit \
+            -m "chore(sync): 强制合并 Nciae-Zyh/stundeck@${upstream_head:0:7}"; then
+            # -X theirs 只能自动解决文件内容冲突，处理不了"上游删除、fork 修改"
+            # 这类删除冲突（web/dist 下带哈希的文件名每次构建都变，是重灾区）。
+            # 强制合并语义：残留冲突一律以上游为准。
+            git diff -z --name-only --diff-filter=U | while IFS= read -r -d '' f; do
+              if git cat-file -e "upstream/main:$f" 2>/dev/null; then
+                git checkout --theirs -- "$f"
+                git add "$f"
+              else
+                git rm "$f"
+              fi
+            done
+            git commit --no-edit
+          fi
 
           if [ "$before" = "$(git rev-parse HEAD)" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
