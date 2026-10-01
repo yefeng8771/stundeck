@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: apk-ipq60xx-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -44,7 +48,7 @@ jobs:
           CGO_ENABLED: '0'
         run: |
           set -eu
-          VER="0.1.$(date -u +%Y%m%d%H%M)"
+          VER="0.1.$(date -u +%Y%m%d%H%M%S)"
           echo "STUNDECK_VERSION=$VER" >> "$GITHUB_ENV"
           M=github.com/Nciae-Zyh/stundeck/internal/version
           mkdir -p prebuilt
@@ -100,10 +104,15 @@ jobs:
           ls -lh dist
 
       - name: Create release
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eu
           TAG="v$STUNDECK_VERSION"
           NOTES="Auto-built IPQ60XX apk + raw linux-arm64 binary tarball from commit ${GITHUB_SHA:0:7}, version $STUNDECK_VERSION, built $(date -u +%Y-%m-%dT%H:%M:%SZ)."
-          gh release create "$TAG" dist/*.apk dist/*.tar.gz --repo "$GITHUB_REPOSITORY" --title "Stundeck IPQ60XX apk $TAG" --notes "$NOTES"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release $TAG already exists, skipping"
+          else
+            gh release create "$TAG" dist/*.apk dist/*.tar.gz --repo "$GITHUB_REPOSITORY" --title "Stundeck IPQ60XX apk $TAG" --notes "$NOTES"
+          fi
